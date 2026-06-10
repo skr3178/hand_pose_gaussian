@@ -1,0 +1,24 @@
+# Large external repos — referenced in README instead of uploaded
+RLDX-1/
+
+# Local symlinks to other disks (broken outside this machine)
+hand_body_estimation
+
+# Claude Code session files
+.claude/
+
+# Large binary files (GitHub hard limit is 100 MB)
+*.mp4
+*.avi
+*.mov
+*.zip
+*.tar.gz
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.onnx
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
