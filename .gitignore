@@ -31,3 +31,8 @@ Thumbs.db
 # Regenerable sample bulk (raw depth arrays, extracted frames)
 samples/ego_depth/*.npy
 samples/ego_sample_frames/
+samples/*_depth/
+samples/ego_depth_full/
+samples/*_frames/
+!samples/ego_panel_frames/frame_0030.jpg
+!samples/ifixit_panel_frames/frame_0040.jpg
