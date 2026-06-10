@@ -2,6 +2,19 @@
 
 **Goal:** Recreate Panel 1 (left) of "Video 7 — Human Data Capture Pipeline," driven by a single uncalibrated RGB camera. Turn bare-hand tabletop demonstrations into robot training data.
 
+## Status (2026-06-10)
+
+| Stage | State | Findings |
+|---|---|---|
+| 0 — frames | ✅ done | `samples/ego_sample.mp4` (HaWoR ego clip, 121 frames extracted) |
+| 1 — hand pose | ✅ both models verified | HaMeR and WiLoR run in shared `.venv-hamer`; mesh quality near-identical on 9 test frames (`samples/ego_compare_3way.jpg`). WiLoR recovered 1 of the 2 motion-blur frames HaMeR missed; detector is 51 MB vs HaMeR's 2.4 GB chain. **Stage-1 pick: WiLoR** (also feeds HaWoR later); HaMeR kept as benchmark baseline. |
+| 2 — metric lift | 🔄 in progress | Depth Anything V2 metric (indoor) run on test frames (`samples/ego_depth/`); wrist-anchor fusion script at `samples/fuse_depth_hands.py` |
+| 3 — table plane | 🔄 in progress | RANSAC plane fit inside the same fusion script |
+| 4–6 | ⏳ pending | HaWoR for world-frame on moving cameras; Rerun panel |
+
+Setup details + gotchas: see `setup_log.md`. Per-frame mesh quality and blur
+dropouts documented in `samples/ego_compare_3way.jpg` and `samples/ego_side_by_side/`.
+
 ## Panel 1 anatomy
 
 Panel 1 is two synchronized sub-views fed by one pipeline:
