@@ -3,7 +3,7 @@ Saves per-frame metric joints + plane to ego_fusion_full/fusion.npz.
 
 Run: cd hamer && PYOPENGL_PLATFORM=egl ../.venv-hamer/bin/python ../samples/fuse_full.py
 """
-import os, glob
+import os, glob, sys
 import numpy as np
 import torch
 import cv2
@@ -48,17 +48,42 @@ def ransac_plane(pts, iters=200, thresh=0.01):
     if n[1] > 0: n, d = -n, -d
     return n, d
 
+def build_mano_left(model_cfg, mano_right):
+    """Native left-hand MANO (instead of mirroring the right model)."""
+    from hamer.models.mano_wrapper import MANO as MANOWrapper
+    cfg = {k.lower(): v for k, v in dict(model_cfg.MANO).items()}
+    left = MANOWrapper(**{**cfg, 'is_rhand': False})
+    # official MANO_LEFT.pkl ships with the right hand's shapedirs (smplx #48):
+    # detect and apply the standard x-negation fix
+    if torch.allclose(left.shapedirs[:, 0, :], mano_right.shapedirs[:, 0, :].cpu()):
+        left.shapedirs[:, 0, :] *= -1
+    return left
+
+MIRROR = None  # diag(-1,1,1) rotation mirroring, set in main
+
+def mirror_rotmats(R):
+    """Mirror rotation matrices across the x=0 plane: R' = M R M."""
+    return MIRROR @ R @ MIRROR
+
 def main():
+    global MIRROR
     model, model_cfg = load_hamer(DEFAULT_CHECKPOINT)
     model = model.to('cuda').eval()
+    mano_left = build_mano_left(model_cfg, model.mano).to('cuda').eval()
+    MIRROR = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device='cuda'))
     detector = build_detector()
     cpm = ViTPoseModel('cuda')
+    lr_diffs = []
 
-    frames = sorted(glob.glob(str(SAMPLES / 'ego_sample_frames' / 'frame_*.jpg')))
+    frames_dir = sys.argv[1] if len(sys.argv) > 1 else 'ego_sample_frames'
+    depth_dir = sys.argv[2] if len(sys.argv) > 2 else 'ego_depth_full'
+    fusion_dir = sys.argv[3] if len(sys.argv) > 3 else 'ego_fusion_full'
+    os.makedirs(SAMPLES / fusion_dir, exist_ok=True)
+    frames = sorted(glob.glob(str(SAMPLES / frames_dir / 'frame_*.jpg')))
     out = {}   # frame name -> dict(hands=[(right, joints 21x3)], plane=(n,d))
     for fi, fp in enumerate(frames):
         name = Path(fp).stem
-        dp = SAMPLES / 'ego_depth_full' / f'{name}_depth.npy'
+        dp = SAMPLES / depth_dir / f'{name}_depth.npy'
         if not dp.exists(): continue
         img_cv2 = cv2.imread(fp)
         depth = np.load(dp)
@@ -103,8 +128,26 @@ def main():
                                          batch['img_size'].float(), torch.tensor(scaled_focal)).cpu().numpy()
                 k3 = o['pred_keypoints_3d'].cpu().numpy()
                 rts = batch['right'].cpu().numpy()
+                # native left-hand joints via MANO_LEFT (mirror the predicted
+                # right-hand rotations into left-hand convention)
+                left_idx = np.where(rts < 0.5)[0]
+                k3_left = {}
+                if len(left_idx):
+                    mp = o['pred_mano_params']
+                    go = mirror_rotmats(mp['global_orient'][left_idx])
+                    hp = mirror_rotmats(mp['hand_pose'][left_idx])
+                    with torch.no_grad():
+                        lo = mano_left(global_orient=go, hand_pose=hp,
+                                       betas=mp['betas'][left_idx], pose2rot=False)
+                    for j, bi in enumerate(left_idx):
+                        k3_left[int(bi)] = lo.joints[j].cpu().numpy()
                 for i in range(len(k3)):
-                    k = k3[i].copy(); k[:, 0] = (2*rts[i]-1)*k[:, 0]
+                    if i in k3_left:
+                        k = k3_left[i].copy()
+                        mirrored = k3[i].copy(); mirrored[:, 0] *= -1
+                        lr_diffs.append(np.linalg.norm(k - mirrored, axis=1).mean())
+                    else:
+                        k = k3[i].copy(); k[:, 0] = (2*rts[i]-1)*k[:, 0]
                     jc = k + cam_t[i]
                     w = jc[0]
                     u = int(np.clip(w[0]/w[2]*scaled_focal + W/2, 0, W-1))
@@ -141,7 +184,7 @@ def main():
             sm = joints + (w_s - joints[0])  # rigid shift to smoothed wrist
             out[nm]['hands'] = [(r, sm if r == side else j) for r, j in out[nm]['hands']]
 
-    np.savez_compressed(SAMPLES / 'ego_fusion_full' / 'fusion.npz',
+    np.savez_compressed(SAMPLES / fusion_dir / 'fusion.npz',
                         **{nm: np.array(
                             [np.concatenate([[h[0]], h[1].ravel()]) for h in v['hands']]
                             if v['hands'] else np.zeros((0, 64)), dtype=np.float32)
@@ -150,6 +193,9 @@ def main():
                                             if v['plane'] else np.zeros(4))
                            for nm, v in out.items()})
     n_det = sum(1 for v in out.values() if v['hands'])
+    if lr_diffs:
+        print(f'left-native vs mirrored-right joint diff: mean {np.mean(lr_diffs)*1000:.2f} mm, '
+              f'max {np.max(lr_diffs)*1000:.2f} mm over {len(lr_diffs)} left hands')
     print(f'FUSION-FULL-DONE {n_det}/{len(out)} frames with hands')
 
 if __name__ == '__main__':

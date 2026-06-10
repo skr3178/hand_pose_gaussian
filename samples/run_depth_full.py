@@ -1,15 +1,17 @@
-"""Depth Anything V2 metric on ALL extracted frames of the ego sample."""
-import torch, numpy as np, os, glob
+"""Depth Anything V2 metric on all frames. Usage: run_depth_full.py [frames_dir] [out_dir]"""
+import torch, numpy as np, os, glob, sys
 from PIL import Image
 from transformers import pipeline
 
+FRAMES_DIR = sys.argv[1] if len(sys.argv) > 1 else 'ego_sample_frames'
+OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else 'ego_depth_full'
 pipe = pipeline("depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Indoor-Large-hf",
                 device=0, torch_dtype=torch.float16)
-os.makedirs('ego_depth_full', exist_ok=True)
-frames = sorted(glob.glob('ego_sample_frames/frame_*.jpg'))
+os.makedirs(OUT_DIR, exist_ok=True)
+frames = sorted(glob.glob(f'{FRAMES_DIR}/frame_*.jpg'))
 for i, fp in enumerate(frames):
     name = os.path.basename(fp).replace('.jpg', '')
-    out_npy = f'ego_depth_full/{name}_depth.npy'
+    out_npy = f'{OUT_DIR}/{name}_depth.npy'
     if os.path.exists(out_npy):
         continue
     img = Image.open(fp)

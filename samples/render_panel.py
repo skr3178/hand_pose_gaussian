@@ -3,7 +3,7 @@
   bottom (1b): metric 3D skeletons + fitted table plane, fixed camera
 Stitched to ego_panel1.mp4 (30 fps).
 """
-import numpy as np, cv2, glob, os, subprocess
+import numpy as np, cv2, glob, os, subprocess, sys
 from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
@@ -14,9 +14,13 @@ EDGES = [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),(0,9),(9,10),(10,11),
          (11,12),(0,13),(13,14),(14,15),(15,16),(0,17),(17,18),(18,19),(19,20)]
 RED, BLUE = (60, 60, 230), (230, 120, 40)  # BGR
 
-data = np.load(SAMPLES / 'ego_fusion_full' / 'fusion.npz')
-frames = sorted(glob.glob(str(SAMPLES / 'ego_sample_frames' / 'frame_*.jpg')))
-out_dir = SAMPLES / 'ego_panel_frames'
+frames_dir = sys.argv[1] if len(sys.argv) > 1 else 'ego_sample_frames'
+fusion_dir = sys.argv[2] if len(sys.argv) > 2 else 'ego_fusion_full'
+panel_dir = sys.argv[3] if len(sys.argv) > 3 else 'ego_panel_frames'
+out_name = sys.argv[4] if len(sys.argv) > 4 else 'ego_panel1.mp4'
+data = np.load(SAMPLES / fusion_dir / 'fusion.npz')
+frames = sorted(glob.glob(str(SAMPLES / frames_dir / 'frame_*.jpg')))
+out_dir = SAMPLES / panel_dir
 out_dir.mkdir(exist_ok=True)
 
 W_out = 1280
@@ -83,5 +87,5 @@ subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '30',
                 '-pattern_type', 'glob', '-i', str(out_dir / 'frame_*.jpg'),
                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
-                str(SAMPLES / 'ego_panel1.mp4')], check=True)
+                str(SAMPLES / out_name)], check=True)
 print('PANEL-DONE ->', SAMPLES / 'ego_panel1.mp4')
