@@ -35,7 +35,10 @@ for fp in frames:
     # ---- 1a: 2D skeleton overlay ----
     top = img.copy()
     for row in hands:
-        right = int(row[0]); J = row[1:].reshape(21, 3)
+        right = int(row[0])
+        # cols 1:64 = metric (anchored) joints; cols 64:127 = HaMeR raw camera
+        # joints (pixel-aligned). Draw 1a with raw when available.
+        J = row[64:127].reshape(21, 3) if row.shape[0] >= 127 else row[1:64].reshape(21, 3)
         col = RED if right else BLUE
         pts2d = np.stack([J[:, 0]/J[:, 2]*f + W/2, J[:, 1]/J[:, 2]*f + H/2], 1).astype(int)
         for e in EDGES:
@@ -54,7 +57,7 @@ for fp in frames:
         b2 = np.cross(n, b1)
         # center patch under the hands if any, else under camera ray
         if len(hands):
-            cm = np.mean([r[1:].reshape(21, 3).mean(0) for r in hands], 0)
+            cm = np.mean([r[1:64].reshape(21, 3).mean(0) for r in hands], 0)
             c0 = cm - (cm @ n + d) * n
         g = np.linspace(-0.45, 0.45, 2)
         quad = c0 + np.outer(np.repeat(g, 2), b1) + np.outer(np.tile(g, 2), b2)
@@ -63,7 +66,7 @@ for fp in frames:
     else:
         center = np.array([0, 0, 1.2])
     for row in hands:
-        right = int(row[0]); J = row[1:].reshape(21, 3)
+        right = int(row[0]); J = row[1:64].reshape(21, 3)
         col = 'crimson' if right else 'royalblue'
         for e in EDGES:
             ax.plot(J[list(e), 0], J[list(e), 2], -J[list(e), 1], c=col, lw=2)

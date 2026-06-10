@@ -148,16 +148,17 @@ def main():
                         lr_diffs.append(np.linalg.norm(k - mirrored, axis=1).mean())
                     else:
                         k = k3[i].copy(); k[:, 0] = (2*rts[i]-1)*k[:, 0]
-                    jc = k + cam_t[i]
-                    w = jc[0]
+                    jc_raw = k + cam_t[i]   # HaMeR's own camera: pixel-aligned 2D
+                    jc = jc_raw
+                    w = jc_raw[0]
                     u = int(np.clip(w[0]/w[2]*scaled_focal + W/2, 0, W-1))
                     v = int(np.clip(w[1]/w[2]*scaled_focal + H/2, 0, H-1))
                     win = depth[max(0,v-4):v+5, max(0,u-4):u+5]
                     wv = win[(win > 0.1) & (win < 4.0)]
                     if wv.size:
                         t_new = w * (float(np.median(wv))/w[2]) - k[0]
-                        jc = k + t_new
-                    hands.append((int(rts[i]), jc))
+                        jc = k + t_new       # metric (anchored): for 1b + data
+                    hands.append((int(rts[i]), jc, jc_raw))
         out[name] = dict(hands=hands, plane=(n, d))
         if fi % 20 == 0: print(f'{fi+1}/{len(frames)}', flush=True)
 
@@ -182,12 +183,13 @@ def main():
         wrists = one_euro([t[0] for t in track])
         for nm, joints, w_s in zip(idxs, track, wrists):
             sm = joints + (w_s - joints[0])  # rigid shift to smoothed wrist
-            out[nm]['hands'] = [(r, sm if r == side else j) for r, j in out[nm]['hands']]
+            out[nm]['hands'] = [(r, sm if r == side else j, raw)
+                                for r, j, raw in out[nm]['hands']]
 
     np.savez_compressed(SAMPLES / fusion_dir / 'fusion.npz',
                         **{nm: np.array(
-                            [np.concatenate([[h[0]], h[1].ravel()]) for h in v['hands']]
-                            if v['hands'] else np.zeros((0, 64)), dtype=np.float32)
+                            [np.concatenate([[h[0]], h[1].ravel(), h[2].ravel()]) for h in v['hands']]
+                            if v['hands'] else np.zeros((0, 127)), dtype=np.float32)
                            for nm, v in out.items()},
                         **{f'{nm}__plane': (np.concatenate([v['plane'][0], [v['plane'][1]]])
                                             if v['plane'] else np.zeros(4))
