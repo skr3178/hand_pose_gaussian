@@ -2,6 +2,13 @@
 
 Paper-reproduction workspace for hand pose extraction and dexterous manipulation from human videos.
 
+## Project notes (start here)
+
+- [goal.md](goal.md) — the pipeline we are building: monocular RGB video → HaMeR hand
+  extraction → object 6-DoF track → 3DGS workspace → robot retargeting.
+- [4.2.md](4.2.md) — deep reference notes on the RLDX-1 §4-2 human data pipeline
+  (tool candidates per stage, caveats, checkpoints).
+
 ## Papers (included as PDFs)
 
 - HO-Cap: A Capture System for Hand-Object Interaction ([arXiv:2406.06843](https://arxiv.org/abs/2406.06843))
