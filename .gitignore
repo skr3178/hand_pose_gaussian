@@ -27,3 +27,7 @@ __pycache__/
 # OS / editor noise
 .DS_Store
 Thumbs.db
+
+# Regenerable sample bulk (raw depth arrays, extracted frames)
+samples/ego_depth/*.npy
+samples/ego_sample_frames/
