@@ -29,7 +29,7 @@ for fp in frames:
     img = cv2.imread(fp)
     H, W = img.shape[:2]
     # must match the focal fuse_full used (calibrated if provided, else nominal)
-    if len(sys.argv) > 5:
+    if len(sys.argv) > 5 and float(sys.argv[5]) > 0:
         f = float(sys.argv[5])
     elif 'meta__focal' in data.files and data['meta__focal'][0] > 0:
         f = float(data['meta__focal'][0])
@@ -92,7 +92,8 @@ for fp in frames:
     cv2.imwrite(str(out_dir / f'{name}.jpg'), panel, [cv2.IMWRITE_JPEG_QUALITY, 90])
 
 print('frames rendered:', len(list(out_dir.glob('*.jpg'))))
-subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '30',
+fps = sys.argv[6] if len(sys.argv) > 6 else '30'
+subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', fps,
                 '-pattern_type', 'glob', '-i', str(out_dir / 'frame_*.jpg'),
                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
