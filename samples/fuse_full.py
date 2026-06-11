@@ -78,6 +78,11 @@ def main():
     frames_dir = sys.argv[1] if len(sys.argv) > 1 else 'ego_sample_frames'
     depth_dir = sys.argv[2] if len(sys.argv) > 2 else 'ego_depth_full'
     fusion_dir = sys.argv[3] if len(sys.argv) > 3 else 'ego_fusion_full'
+    focal_override = None
+    if len(sys.argv) > 4:  # optional GeoCalib intrinsics json
+        import json
+        focal_override = json.load(open(SAMPLES / sys.argv[4]))['focal_px']
+        print(f'using calibrated focal {focal_override:.1f}px from {sys.argv[4]}')
     os.makedirs(SAMPLES / fusion_dir, exist_ok=True)
     frames = sorted(glob.glob(str(SAMPLES / frames_dir / 'frame_*.jpg')))
     out = {}   # frame name -> dict(hands=[(right, joints 21x3)], plane=(n,d))
@@ -88,9 +93,9 @@ def main():
         img_cv2 = cv2.imread(fp)
         depth = np.load(dp)
         H, W = img_cv2.shape[:2]
-        # realistic nominal intrinsics (~53 deg hfov); HaMeR cam_t adapts via
-        # cam_crop_to_full so 2D projections stay aligned under this same K
-        scaled_focal = float(max(H, W))
+        # calibrated focal (GeoCalib) when provided, else nominal ~53 deg hfov;
+        # HaMeR cam_t adapts via cam_crop_to_full so 2D stays aligned either way
+        scaled_focal = focal_override or float(max(H, W))
 
         det = detector(img_cv2)['instances']
         vmask = (det.pred_classes == 0) & (det.scores > 0.5)
@@ -187,6 +192,7 @@ def main():
                                 for r, j, raw in out[nm]['hands']]
 
     np.savez_compressed(SAMPLES / fusion_dir / 'fusion.npz',
+                        meta__focal=np.array([focal_override or 0.0]),
                         **{nm: np.array(
                             [np.concatenate([[h[0]], h[1].ravel(), h[2].ravel()]) for h in v['hands']]
                             if v['hands'] else np.zeros((0, 127)), dtype=np.float32)

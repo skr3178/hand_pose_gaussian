@@ -28,7 +28,13 @@ for fp in frames:
     name = Path(fp).stem
     img = cv2.imread(fp)
     H, W = img.shape[:2]
-    f = float(max(H, W))  # same nominal focal as fuse_full.py
+    # must match the focal fuse_full used (calibrated if provided, else nominal)
+    if len(sys.argv) > 5:
+        f = float(sys.argv[5])
+    elif 'meta__focal' in data.files and data['meta__focal'][0] > 0:
+        f = float(data['meta__focal'][0])
+    else:
+        f = float(max(H, W))
     hands = data[name] if name in data.files else np.zeros((0, 64))
     plane = data.get(f'{name}__plane', np.zeros(4))
 
@@ -91,4 +97,4 @@ subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '30',
                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
                 str(SAMPLES / out_name)], check=True)
-print('PANEL-DONE ->', SAMPLES / 'ego_panel1.mp4')
+print('PANEL-DONE ->', SAMPLES / out_name)
