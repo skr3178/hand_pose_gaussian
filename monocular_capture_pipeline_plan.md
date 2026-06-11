@@ -8,9 +8,12 @@
 |---|---|---|
 | 0 — frames | ✅ done | `samples/ego_sample.mp4` (HaWoR ego clip, 121 frames extracted) |
 | 1 — hand pose | ✅ both models verified | HaMeR and WiLoR run in shared `.venv-hamer`; mesh quality near-identical on 9 test frames (`samples/ego_compare_3way.jpg`). WiLoR recovered 1 of the 2 motion-blur frames HaMeR missed; detector is 51 MB vs HaMeR's 2.4 GB chain. **Stage-1 pick: WiLoR** (also feeds HaWoR later); HaMeR kept as benchmark baseline. |
-| 2 — metric lift | 🔄 in progress | Depth Anything V2 metric (indoor) run on test frames (`samples/ego_depth/`); wrist-anchor fusion script at `samples/fuse_depth_hands.py` |
-| 3 — table plane | 🔄 in progress | RANSAC plane fit inside the same fusion script |
-| 4–6 | ⏳ pending | HaWoR for world-frame on moving cameras; Rerun panel |
+| 2 — metric lift | ✅ done (v1) | depth anchor + GeoCalib focal, see "How spatial positioning is computed" below; per-clip `fusion.npz` data products |
+| 3 — table plane | ✅ done (v1) | per-frame RANSAC plane (locks onto wall if no table in scene, e.g. acc3d clip) |
+| 5 — smoothing | ✅ done (v1) | One-Euro on wrist trajectories |
+| 6 — panel render | ✅ done (v1) | `render_panel.py` (1a/1b video) + `make_3d_viewer.py` (interactive Plotly HTML); body/arm chains (COCO-17) attached to hands |
+| 4 — object pose | ⏳ pending | SAM2 + FoundationPose, next up |
+| world frame | ⏳ pending | HaWoR/SLAM for moving cameras; moot on a static tripod |
 
 Setup details + gotchas: see `setup_log.md`. Per-frame mesh quality and blur
 dropouts documented in `samples/ego_compare_3way.jpg` and `samples/ego_side_by_side/`.
@@ -49,6 +52,34 @@ WiLoR output lives in a per-frame camera frame with weak-perspective scale — i
 - **Static tripod camera:** skip SLAM.
   - Estimate intrinsics once (GeoCalib, or assume nominal FOV).
   - Resolve metric scale with a monocular metric-depth model — **Depth Anything V2 (metric)**, **UniDepth**, or **MoGe** — by anchoring wrist/hand depth to the depth map.
+
+### How spatial positioning is computed (as implemented in `samples/fuse_full.py`)
+
+Per detected hand, per frame:
+
+1. **HaMeR initial guess** — the network's weak-perspective camera is converted by
+   `cam_crop_to_full()` into a translation under our calibrated focal
+   (`tz ≈ 2f / (box_size·scale)`, i.e. apparent size → distance). 2D projection is
+   pixel-accurate; distance assumes an average-size hand → unreliable.
+2. **Depth anchor** — read Depth Anything V2 metric depth in a 9×9 window at the
+   projected wrist pixel (median), then slide the rigid hand along its camera ray:
+   `t_new = wrist_raw·(z_meas/z_hamer) − J_local[wrist]`. Preserves the wrist's 2D
+   projection, replaces the learned distance with a measured one. Finger
+   articulation (MANO `J_local`) is untouched.
+3. **Lateral position** — pinhole geometry `x = (u−cx)·z/f` with the GeoCalib focal
+   (a wrong focal rescales all lateral coordinates; the nominal guess was ~40% off).
+4. **Reference frame** — everything is per-frame camera coordinates; the RANSAC
+   plane gives in-frame physical reference (heights above table). No cross-frame
+   world frame yet (HaWoR/SLAM for moving cameras; moot on a tripod).
+5. **Smoothing** — One-Euro filter on wrist trajectories, hand rigidly shifted.
+
+Body joints (COCO-17 from ViTPose, already computed for hand boxes) get the same
+treatment: depth lookup at each confident in-frame joint pixel + pinhole lateral.
+Arm chains attach elbows to hands by nearest-wrist matching (ViTPose L/R labels
+flip on egocentric arms).
+
+Error budget, in order: depth-model error at the wrist (± few cm), GeoCalib focal
+uncertainty (lateral scale), per-frame reference frame.
 
 ## Stage 3 — Table plane
 
