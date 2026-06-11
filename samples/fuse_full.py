@@ -113,12 +113,29 @@ def main():
                     bboxes.append([kps[valid,0].min(), kps[valid,1].min(),
                                    kps[valid,0].max(), kps[valid,1].max()])
                     is_right.append(r)
+        # body keypoints (COCO 17) of the most confident person, lifted by depth
+        body = np.zeros((17, 7), dtype=np.float32)  # u,v,conf,x,y,z,valid
+        if vitposes_out:
+            vp_best = max(vitposes_out, key=lambda vp: vp['keypoints'][:17, 2].sum())
+            body[:, :3] = vp_best['keypoints'][:17]
         ys, xs = np.mgrid[0:H:8, 0:W:8]
         zs = depth[ys, xs]
         good = (zs > 0.1) & (zs < 4.0)
         pts = np.stack([(xs[good]-W/2)*zs[good]/scaled_focal,
                         (ys[good]-H/2)*zs[good]/scaled_focal, zs[good]], 1)
         n, d = ransac_plane(pts)
+
+        # lift confident, in-frame body joints through the depth map
+        for j in range(17):
+            u_, v_, c_ = body[j, :3]
+            if c_ < 0.3 or not (0 <= u_ < W and 0 <= v_ < H):
+                continue
+            ui, vi = int(u_), int(v_)
+            win = depth[max(0, vi-4):vi+5, max(0, ui-4):ui+5]
+            wv = win[(win > 0.1) & (win < 4.0)]
+            if wv.size:
+                z_ = float(np.median(wv))
+                body[j, 3:7] = [(u_-W/2)*z_/scaled_focal, (v_-H/2)*z_/scaled_focal, z_, 1.0]
 
         hands = []
         if bboxes:
@@ -164,7 +181,7 @@ def main():
                         t_new = w * (float(np.median(wv))/w[2]) - k[0]
                         jc = k + t_new       # metric (anchored): for 1b + data
                     hands.append((int(rts[i]), jc, jc_raw))
-        out[name] = dict(hands=hands, plane=(n, d))
+        out[name] = dict(hands=hands, plane=(n, d), body=body)
         if fi % 20 == 0: print(f'{fi+1}/{len(frames)}', flush=True)
 
     # ---- Stage 5: One-Euro-ish smoothing of wrists (per handedness track) ----
@@ -199,6 +216,8 @@ def main():
                            for nm, v in out.items()},
                         **{f'{nm}__plane': (np.concatenate([v['plane'][0], [v['plane'][1]]])
                                             if v['plane'] else np.zeros(4))
+                           for nm, v in out.items()},
+                        **{f'{nm}__body': v.get('body', np.zeros((17, 7), dtype=np.float32))
                            for nm, v in out.items()})
     n_det = sum(1 for v in out.values() if v['hands'])
     if lr_diffs:
